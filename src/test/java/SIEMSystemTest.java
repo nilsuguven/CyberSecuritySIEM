@@ -32,16 +32,17 @@ public class SIEMSystemTest {
         siemEngine = new SIEMEngine(null, repository);
     }
 
-    // TEST 1: Incident modelinin doğru oluşturulması
+    // TEST 1: Incident modelinin durum (OPEN) ve zaman damgası doğrulaması
     @Test
-    void testIncidentCreation() {
+    void testIncidentCreationAndState() {
         Incident incident = new Incident("INC-1", "Test Olayı", "10.0.0.1", SeverityLevel.HIGH, 80);
         assertEquals("INC-1", incident.getId());
         assertEquals(80, incident.getThreatScore());
-        assertEquals("OPEN", incident.getStatus());
+        assertEquals("OPEN", incident.getStatus(), "Yeni oluşturulan olay OPEN durumunda olmalı");
+        assertNotNull(incident.getTimestamp(), "Olay zaman damgası boş olmamalı");
     }
 
-    // TEST 2: IpBlacklistFilter filtresinin karalistedeki IP'yi yakalaması
+    // TEST 2: IpBlacklistFilter karaliste IP tespiti ve seviye kontrolü
     @Test
     void testIpBlacklistFilter() {
         IpBlacklistFilter filter = new IpBlacklistFilter();
@@ -50,6 +51,7 @@ public class SIEMSystemTest {
 
         assertNotNull(incident);
         assertEquals(SeverityLevel.HIGH, incident.getSeverity());
+        assertEquals("192.168.1.100", incident.getSourceIp());
     }
 
     // TEST 3: Max-Heap Öncelik Kuyruğunun yüksek skorlu olayı öne alması
@@ -61,10 +63,10 @@ public class SIEMSystemTest {
         priorityQueue.addIncident(lowThreat);
         priorityQueue.addIncident(highThreat);
 
-        assertEquals("INC-2", priorityQueue.pollNextIncident().getId());
+        assertEquals("INC-2", priorityQueue.pollNextIncident().getId(), "En yüksek skorlu olay ilk sırada çıkmalı");
     }
 
-    // TEST 4: Observer Pattern bildirim mekanizmasının çalışması
+    // TEST 4: Observer Pattern bildirim tetikleme testi
     @Test
     void testObserverSubscription() {
         AnalystNotifier notifier = new AnalystNotifier("Test SOC");
@@ -74,31 +76,32 @@ public class SIEMSystemTest {
         assertDoesNotThrow(() -> alertPublisher.notifyObservers(criticalIncident));
     }
 
-    // TEST 5: Kalıcı Dosya Kaydı ve Yükleme Testi
+    // TEST 5: Çözülen (RESOLVED) Olayların Durum ve Dosya Kalıcılığı Testi
     @Test
-    void testFileRepositorySaveAndLoad() {
+    void testFileRepositorySaveAndLoadWithStatus() {
         Incident incident = new Incident("INC-TEST", "Kalıcı Kayıt", "127.0.0.1", SeverityLevel.MEDIUM, 50);
+        incident.setStatus("RESOLVED"); // Durum güncellemesi
+
         repository.saveAll(List.of(incident));
 
         List<Incident> loaded = repository.loadAll();
-        assertFalse(loaded.isEmpty());
-
-        File file = new File("incidents.txt");
-        assertTrue(file.exists());
+        assertFalse(loaded.isEmpty(), "Dosyadan en az 1 olay yüklenmeli");
+        assertEquals("RESOLVED", loaded.get(0).getStatus(), "Yüklenen olayın durumu RESOLVED olarak korunmalı");
+        assertEquals("127.0.0.1", loaded.get(0).getSourceIp());
     }
 
-    // TEST 6: Güvenli log girişinde olay oluşturulmaması
+    // TEST 6: Güvenli log girişinde olay tetiklenmemesi
     @Test
     void testSafeLogReturnsNull() {
         LogEntry safeLog = new LogEntry("L4", "192.168.1.5", "Normal Kullanıcı Girişi", "NORMAL");
         Incident incident = siemEngine.processLog(safeLog);
 
-        assertNull(incident);
+        assertNull(incident, "Güvenli log için olay tetiklenmemeli");
     }
 
-    // TEST 7: Brute Force Eşik Mekanizması Testi (3 Deneme Kuralı)
+    // TEST 7: Brute Force Eşik Mekanizması Doğrulaması (Kritik Davranış Testi)
     @Test
-    public void testBruteForceFilterThreshold() {
+    public void testBruteForceFilterThresholdBehavior() {
         AbstractLogFilter bfFilter = new BruteForceFilter();
         FileRepository repo = new FileRepository();
         SIEMEngine engine = new SIEMEngine(bfFilter, repo);
@@ -107,21 +110,20 @@ public class SIEMSystemTest {
         LogEntry log2 = new LogEntry("LOG-2", "192.168.1.50", "Auth Fail 2", "AUTH_FAILURE");
         LogEntry log3 = new LogEntry("LOG-3", "192.168.1.50", "Auth Fail 3", "AUTH_FAILURE");
 
-        // İlk iki denemede olay oluşmamalı (Eşik = 3)
-        Incident inc1 = engine.processLog(log1);
-        Incident inc2 = engine.processLog(log2);
-        assertNull(inc1, "1. başarısız denemede olay oluşmamalı");
-        assertNull(inc2, "2. başarısız denemede olay oluşmamalı");
+        // 1 ve 2. denemede henüz eşik (3) aşılmadığı için null dönmeli
+        assertNull(engine.processLog(log1), "1. başarısız denemede olay oluşmamalı");
+        assertNull(engine.processLog(log2), "2. başarısız denemede olay oluşmamalı");
 
-        // 3. denemede CRITICAL olay oluşmalı
+        // 3. denemede tam olarak CRITICAL olay tetiklenmeli
         Incident inc3 = engine.processLog(log3);
-        assertNotNull(inc3, "3. başarısız denemede Brute Force olayı oluşturulmalı");
-        assertEquals(90, inc3.getThreatScore(), "Brute Force tehdit skoru 90 olmalı");
+        assertNotNull(inc3, "3. denemede eşik aşıldığı için olay tetiklenmeli");
+        assertEquals(SeverityLevel.CRITICAL, inc3.getSeverity());
+        assertEquals(90, inc3.getThreatScore());
     }
 
-    // TEST 8: Müdahale Edilen Olayların Arşivlenmesi ve Kaydedilmesi Testi
+    // TEST 8: SIEMEngine shutdown ve Yaşam Döngüsü Kalıcılığı Testi
     @Test
-    public void testResolvedIncidentsPersistence() {
+    public void testSIEMEngineLifecycleAndPersistence() {
         FileRepository repo = new FileRepository();
         SIEMEngine engine = new SIEMEngine(null, repo);
 
@@ -133,5 +135,8 @@ public class SIEMSystemTest {
             assertEquals("RESOLVED", incident.getStatus());
             assertTrue(engine.getResolvedIncidents().contains(incident));
         }
+
+        // Kapatma simülasyonu (dosyaya yazma)
+        assertDoesNotThrow(engine::shutdown);
     }
 }
