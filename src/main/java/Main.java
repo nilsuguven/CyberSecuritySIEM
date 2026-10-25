@@ -1,6 +1,5 @@
 import model.Incident;
 import model.LogEntry;
-import observer.AlertPublisher;
 import observer.AnalystNotifier;
 import repository.FileRepository;
 import service.SIEMEngine;
@@ -10,20 +9,15 @@ import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
-        // 1. Observer / Bildirim Yayıncısını Başlatma
-        AlertPublisher alertPublisher = new AlertPublisher();
-        AnalystNotifier SOCNotifier = new AnalystNotifier("SOC Ekibi");
-        alertPublisher.subscribe(SOCNotifier);
-
-        // 2. SIEM Motoru ve Veri Depolama Servisini Başlatma
-        SIEMEngine siemEngine = new SIEMEngine(alertPublisher);
+        // 1. Veri Depolama ve SIEM Motorunu Başlatma
         FileRepository repository = new FileRepository();
 
-        // Daha önce dosyada kayıtlı olaylar varsa yükle
-        List<Incident> savedIncidents = repository.loadAll();
-        for (Incident inc : savedIncidents) {
-            siemEngine.getPriorityQueue().addIncident(inc);
-        }
+        // SIEMEngine açılışta kayıtlı verileri otomatik yükler
+        SIEMEngine siemEngine = new SIEMEngine(null, repository);
+
+        // 2. Observer / Bildirim Yayıncısını Bağlama
+        AnalystNotifier SOCNotifier = new AnalystNotifier("SOC Ekibi");
+        siemEngine.getAlertPublisher().subscribe(SOCNotifier);
 
         Scanner scanner = new Scanner(System.in);
         boolean running = true;
@@ -63,36 +57,31 @@ public class Main {
 
                 case "2":
                     System.out.println("\n=== ÖNCELİKLENDİRİLMİŞ GÜVENLİK OLAYLARI (Max-Heap Sıralı) ===");
-                    List<Incident> incidents = siemEngine.getPriorityQueue().getAllIncidentsOrdered();
-                    if (incidents.isEmpty()) {
+                    if (siemEngine.getPriorityQueue().isEmpty()) {
                         System.out.println("Sistemde aktif güvenlik olayı bulunmuyor.");
                     } else {
-                        for (Incident inc : incidents) {
+                        for (Incident inc : siemEngine.getPriorityQueue()) {
                             System.out.println(inc);
                         }
                     }
                     break;
 
                 case "3":
-                    Incident topIncident = siemEngine.getPriorityQueue().pollNextIncident();
+                    Incident topIncident = siemEngine.getPriorityQueue().poll();
                     if (topIncident != null) {
-                        System.out.println("\n[MÜDAHALE EDİLİYOR] En Yüksek Tehdit Skoru Olan Olay Kuyruktan Çekildi:");
-                        System.out.println(topIncident);
-                        topIncident.setStatus("RESOLVED");
-                        System.out.println("Olay Durumu 'RESOLVED' Yapıldı.");
+                        siemEngine.resolveIncident(topIncident);
+                        System.out.println("Olay çözüldü ve arşivlendi: " + topIncident);
                     } else {
-                        System.out.println("Müdahale edilecek olay bulunmuyor.");
+                        System.out.println("Çözülecek aktif olay yok.");
                     }
                     break;
 
                 case "4":
-                    repository.saveAll(siemEngine.getPriorityQueue().getAllIncidentsOrdered());
-                    System.out.println("\n[KAYIT] Tüm olaylar 'incidents.txt' dosyasına başarıyla kaydedildi.");
+                    siemEngine.shutdown();
+                    System.out.println("\n[KAYIT] Tüm olaylar (aktif ve çözülenler) 'incidents.txt' dosyasına başarıyla kaydedildi.");
                     break;
 
                 case "0":
-                    repository.saveAll(siemEngine.getPriorityQueue().getAllIncidentsOrdered());
-                    System.out.println("Sistem kapatılıyor. Veriler kaydedildi.");
                     running = false;
                     break;
 
@@ -100,6 +89,10 @@ public class Main {
                     System.out.println("Geçersiz seçim, tekrar deneyiniz.");
             }
         }
+
+        // Çıkışta otomatik kaydetme ve temiz kapatma
+        siemEngine.shutdown();
+        System.out.println("Tüm veriler (aktif ve çözülenler) kaydedildi. Sistem kapatılıyor.");
         scanner.close();
     }
 }

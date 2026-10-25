@@ -1,0 +1,4 @@
+Öğrenci Numarası: 1250505069
+Ad Soyad: Nilsu Güven
+Görevi: Yazılım Mimarı & Geliştirici (Software Architect & Developer)
+Proje Konusu: Siber Güvenlik Olay Yönetimi (SIEM)

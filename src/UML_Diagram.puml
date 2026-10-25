@@ -1,15 +1,78 @@
 @startuml
-'https://plantuml.com/sequence-diagram
+package "model" {
+    class Incident {
+        - String id
+        - String title
+        - String sourceIp
+        - SeverityLevel severity
+        - int threatScore
+        - LocalDateTime timestamp
+        - String status
+        + getThreatScore(): int
+        + getStatus(): String
+        + setStatus(status: String): void
+    }
 
-autonumber
+    enum SeverityLevel {
+        LOW
+        MEDIUM
+        HIGH
+        CRITICAL
+    }
 
-== Initialization ==
+    class LogEntry {
+        - String logId
+        - String sourceIp
+        - String message
+        - String logType
+    }
+}
 
-Alice -> Bob: Authentication Request
-Bob --> Alice: Authentication Response
+package "filter" {
+    abstract class AbstractLogFilter {
+        # AbstractLogFilter nextFilter
+        + setNextFilter(next: AbstractLogFilter): void
+        + {abstract} process(log: LogEntry): Incident
+        # checkNext(log: LogEntry): Incident
+    }
 
-== Repetition ==
+    class BruteForceFilter {
+        - Map<String, List<Long>> failureTracker
+        - int THRESHOLD
+        - long TIME_WINDOW_MS
+        + process(log: LogEntry): Incident
+    }
 
-Alice -> Bob: Another authentication Request
-Alice <-- Bob: another authentication Response
+    class IpBlacklistFilter {
+        + process(log: LogEntry): Incident
+    }
+
+    AbstractLogFilter <|-- BruteForceFilter
+    AbstractLogFilter <|-- IpBlacklistFilter
+    AbstractLogFilter --> AbstractLogFilter : nextFilter
+}
+
+package "service" {
+    class SIEMEngine {
+        - AbstractLogFilter filterChain
+        - PriorityQueue<Incident> priorityQueue
+        - List<Incident> resolvedIncidents
+        - AlertPublisher alertPublisher
+        - FileRepository repository
+        + processLog(log: LogEntry): Incident
+        + resolveIncident(incident: Incident): void
+        + shutdown(): void
+    }
+}
+
+package "repository" {
+    class FileRepository {
+        + saveAll(incidents: List<Incident>): void
+        + loadAll(): List<Incident>
+    }
+}
+
+SIEMEngine --> AbstractLogFilter
+SIEMEngine --> FileRepository
+SIEMEngine --> Incident
 @enduml

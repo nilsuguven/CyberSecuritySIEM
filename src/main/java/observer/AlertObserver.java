@@ -1,4 +1,7 @@
 package observer;
 
-public class AlertObserver {
+import model.Incident;
+
+public interface AlertObserver {
+    void onCriticalIncident(Incident incident);
 }
