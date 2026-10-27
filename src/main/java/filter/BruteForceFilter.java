@@ -10,35 +10,31 @@ import java.util.List;
 import java.util.Map;
 
 public class BruteForceFilter extends AbstractLogFilter {
-    // IP başına başarısız denemelerin milisaniye cinsinden zaman damgaları
     private final Map<String, List<Long>> failureTimestamps = new HashMap<>();
     private static final int THRESHOLD = 3;
-    private static final long TIME_WINDOW_MS = 60 * 1000; // 60 saniye (1 dakika)
+    private static final long TIME_WINDOW_MS = 60000; // 60 saniye
 
     @Override
     public Incident process(LogEntry log) {
-        if (log != null && log.getMessage() != null && log.getMessage().toUpperCase().contains("AUTH_FAILURE")) {
-            String ip = log.getSourceIp();
+        String msg = log.getMessage().toLowerCase();
+
+        // Sadece oturum açma başarısızlıklarını yakala
+        if (msg.contains("failed login") || msg.contains("login failed")) {
             long currentTime = System.currentTimeMillis();
+            List<Long> timestamps = failureTimestamps.computeIfAbsent(log.getSourceIp(), k -> new ArrayList<>());
 
-            // IP için liste yoksa oluştur
-            failureTimestamps.putIfAbsent(ip, new ArrayList<>());
-            List<Long> timestamps = failureTimestamps.get(ip);
-
-            // 1. Zaman penceresi dışındaki (60 saniyeden eski) denemeleri temizle
+            // 60 saniyeden eski denemeleri listeden temizle (Sliding Window)
             timestamps.removeIf(timestamp -> (currentTime - timestamp) > TIME_WINDOW_MS);
-
-            // 2. Yeni başarısız denemenin zamanını ekle
             timestamps.add(currentTime);
 
-            // 3. Yalnızca eşik değere (tam 3 denemeye) ULAŞILDIĞI AN olay tetikle
+            // Sadece 3. denemede (eşik ilk kez aşıldığında) 1 kere olay üret
             if (timestamps.size() == THRESHOLD) {
                 return new Incident(
-                        "INC-" + currentTime,
+                        "INC-BF-" + currentTime,
                         "Brute Force Attack Detected",
-                        ip,
-                        SeverityLevel.CRITICAL,
-                        90
+                        log.getSourceIp(),
+                        SeverityLevel.HIGH,
+                        80
                 );
             }
         }

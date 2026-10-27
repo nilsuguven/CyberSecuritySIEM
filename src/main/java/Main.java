@@ -19,7 +19,7 @@ public class Main {
         blacklistFilter.addToBlacklist("192.168.1.100");
 
         BruteForceFilter bruteForceFilter = new BruteForceFilter();
-        blacklistFilter.setNext(bruteForceFilter);
+        blacklistFilter.setNextFilter(bruteForceFilter);
 
         SIEMEngine siemEngine = new SIEMEngine(blacklistFilter, repository);
 

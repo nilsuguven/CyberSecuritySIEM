@@ -1,3 +1,4 @@
+
 package service;
 
 import filter.LogFilter;
@@ -6,36 +7,60 @@ import model.LogEntry;
 import observer.AlertPublisher;
 import repository.IRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class SIEMEngine {
     private final LogFilter filterChain;
-    private final IRepository<Incident> repository; // DIP Uyumlu: Somut sınıf yerine Interface
+    private final IRepository<Incident> repository;
     private final AlertPublisher alertPublisher;
     private final IncidentPriorityQueue priorityQueue;
+    private final ContainmentService containmentService;
+    private final IncidentResponseService responseService;
+
+    // Kuyruktan çıkarılsa bile tüm olayları bellekte tutar.
+    private final List<Incident> allIncidents = new ArrayList<>();
 
     public SIEMEngine(LogFilter filterChain, IRepository<Incident> repository) {
         this.filterChain = filterChain;
         this.repository = repository;
         this.alertPublisher = new AlertPublisher();
         this.priorityQueue = new IncidentPriorityQueue();
+        this.containmentService = new ContainmentService();
+        this.responseService =
+                new IncidentResponseService(this.containmentService, repository);
 
-        if (repository != null) {
-            List<Incident> saved = repository.loadAll();
-            for (Incident inc : saved) {
-                priorityQueue.addIncident(inc);
-            }
+        // Önceki çalıştırmada kaydedilmiş olayları yükle.
+        List<Incident> savedIncidents = repository.loadAll();
+
+        for (Incident incident : savedIncidents) {
+            allIncidents.add(incident);
+            priorityQueue.addIncident(incident);
+        }
+    }
+    public void processLog(LogEntry log) {
+        if (containmentService.isIpBlocked(log.getSourceIp())) {
+            System.out.println(
+                    "[SIEM] Engellenmiş IP'den gelen log reddedildi: "
+                            + log.getSourceIp());
+            return;
+        }
+
+        Incident incident = filterChain.process(log);
+
+        if (incident != null) {
+            priorityQueue.addIncident(incident);
+            allIncidents.add(incident);
+            alertPublisher.notifyObservers(incident);
         }
     }
 
-    public void processLog(LogEntry log) {
-        if (filterChain != null) {
-            Incident incident = filterChain.process(log);
-            if (incident != null) {
-                priorityQueue.addIncident(incident);
-                alertPublisher.notifyObservers(incident);
-            }
-        }
+    public ContainmentService getContainmentService() {
+        return containmentService;
+    }
+
+    public IncidentResponseService getResponseService() {
+        return responseService;
     }
 
     public AlertPublisher getAlertPublisher() {
@@ -47,8 +72,8 @@ public class SIEMEngine {
     }
 
     public void shutdown() {
-        if (repository != null) {
-            repository.saveAll(priorityQueue.getAllIncidentsOrdered());
-        }
+        repository.saveAll(new ArrayList<>(allIncidents));
+        System.out.println(
+                "[SIEM Engine] Tüm olaylar repository'ye kaydedildi.");
     }
 }

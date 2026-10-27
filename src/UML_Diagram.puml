@@ -1,4 +1,8 @@
+
 @startuml Cybersecurity SIEM System
+
+skinparam classAttributeIconSize 0
+hide empty members
 
 package model {
     enum SeverityLevel {
@@ -6,14 +10,26 @@ package model {
         MEDIUM
         HIGH
         CRITICAL
+        --
+        - final int level
+        - SeverityLevel(int level)
+        + int getLevel()
     }
 
     class LogEntry {
+        - String id
         - String sourceIp
         - String message
+        - String logType
+        - LocalDateTime timestamp
+        --
+        + LogEntry(String id, String sourceIp, String message, String logType)
         + LogEntry(String sourceIp, String message)
+        + String getId()
         + String getSourceIp()
         + String getMessage()
+        + String getLogType()
+        + LocalDateTime getTimestamp()
     }
 
     class Incident {
@@ -24,6 +40,7 @@ package model {
         - int threatScore
         - String status
         - LocalDateTime timestamp
+        --
         + Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore)
         + Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore, String status, LocalDateTime timestamp)
         + String getId()
@@ -34,31 +51,33 @@ package model {
         + String getStatus()
         + void setStatus(String status)
         + LocalDateTime getTimestamp()
+        + void setTimestamp(LocalDateTime timestamp)
+        + String toString()
     }
 }
 
 package filter {
     interface LogFilter {
+        + void setNextFilter(LogFilter nextFilter)
         + Incident process(LogEntry log)
     }
 
-    abstract class AbstractLogFilter implements LogFilter {
-        protected LogFilter nextFilter
-        + void setNext(LogFilter nextFilter)
-        + LogFilter getNext()
-        + {abstract} Incident process(LogEntry log)
+    abstract class AbstractLogFilter {
+        # LogFilter nextFilter
+        + void setNextFilter(LogFilter nextFilter)
+        # Incident checkNext(LogEntry log)
     }
 
-    class IpBlacklistFilter extends AbstractLogFilter {
+    class IpBlacklistFilter {
         - Set<String> blacklistedIps
         + void addToBlacklist(String ip)
         + Incident process(LogEntry log)
     }
 
-    class BruteForceFilter extends AbstractLogFilter {
+    class BruteForceFilter {
         - Map<String, List<Long>> failureTimestamps
-        - static final int THRESHOLD = 3
-        - static final long TIME_WINDOW_MS = 60000
+        - {static} int THRESHOLD = 3
+        - {static} long TIME_WINDOW_MS = 60000
         + Incident process(LogEntry log)
     }
 }
@@ -75,10 +94,14 @@ package observer {
         + void notifyObservers(Incident incident)
     }
 
-    class AnalystNotifier implements AlertObserver {
+    class AnalystNotifier {
         - String analystName
+        - Incident lastNotifiedIncident
+        - int notificationCount
         + AnalystNotifier(String analystName)
         + void update(Incident incident)
+        + Incident getLastNotifiedIncident()
+        + int getNotificationCount()
     }
 }
 
@@ -88,8 +111,8 @@ package repository {
         + List<T> loadAll()
     }
 
-    class FileRepository implements IRepository {
-        - String filePath
+    class FileRepository {
+        - final String filePath = "incidents.txt"
         + void saveAll(List<Incident> incidents)
         + List<Incident> loadAll()
     }
@@ -98,10 +121,26 @@ package repository {
 package service {
     class IncidentPriorityQueue {
         - PriorityQueue<Incident> priorityQueue
+        + IncidentPriorityQueue()
         + void addIncident(Incident incident)
         + Incident pollIncident()
         + boolean isEmpty()
         + List<Incident> getAllIncidentsOrdered()
+    }
+
+    class ContainmentService {
+        - Set<String> blockedIps
+        + void blockIp(String ip)
+        + boolean isIpBlocked(String ip)
+        + Set<String> getBlockedIps()
+    }
+
+    class IncidentResponseService {
+        - ContainmentService containmentService
+        - IRepository<Incident> repository
+        + IncidentResponseService(ContainmentService containmentService, IRepository<Incident> repository)
+        + void updateIncidentStatus(Incident incident, String newStatus)
+        + void saveCurrentState(List<Incident> incidents)
     }
 
     class SIEMEngine {
@@ -109,18 +148,47 @@ package service {
         - IRepository<Incident> repository
         - AlertPublisher alertPublisher
         - IncidentPriorityQueue priorityQueue
+        - ContainmentService containmentService
+        - IncidentResponseService responseService
+        - List<Incident> allIncidents
         + SIEMEngine(LogFilter filterChain, IRepository<Incident> repository)
         + void processLog(LogEntry log)
+        + ContainmentService getContainmentService()
+        + IncidentResponseService getResponseService()
         + AlertPublisher getAlertPublisher()
         + IncidentPriorityQueue getPriorityQueue()
         + void shutdown()
     }
 }
 
-SIEMEngine --> LogFilter
-SIEMEngine --> IRepository
-SIEMEngine --> AlertPublisher
-SIEMEngine --> IncidentPriorityQueue
-AlertPublisher o-- AlertObserver
+' Interface ve kalitim iliskileri
+AbstractLogFilter ..|> LogFilter
+IpBlacklistFilter --|> AbstractLogFilter
+BruteForceFilter --|> AbstractLogFilter
+AnalystNotifier ..|> AlertObserver
+FileRepository ..|> IRepository : implements
+
+' Chain of Responsibility
+AbstractLogFilter --> LogFilter : nextFilter
+
+' Observer Pattern
+AlertPublisher o-- AlertObserver : observers
+
+' Model iliskileri
+Incident --> SeverityLevel : severity
+
+' SIEMEngine bagimliliklari
+SIEMEngine --> LogFilter : filterChain
+SIEMEngine --> IRepository : repository
+SIEMEngine --> AlertPublisher : alertPublisher
+SIEMEngine --> IncidentPriorityQueue : priorityQueue
+SIEMEngine --> ContainmentService : containmentService
+SIEMEngine --> IncidentResponseService : responseService
+SIEMEngine --> Incident : allIncidents
+SIEMEngine ..> LogEntry : processes
+
+' Incident response iliskileri
+IncidentResponseService --> ContainmentService
+IncidentResponseService --> IRepository
 
 @enduml
