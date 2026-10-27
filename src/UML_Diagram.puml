@@ -1,18 +1,6 @@
-@startuml
-package "model" {
-    class Incident {
-        - String id
-        - String title
-        - String sourceIp
-        - SeverityLevel severity
-        - int threatScore
-        - LocalDateTime timestamp
-        - String status
-        + getThreatScore(): int
-        + getStatus(): String
-        + setStatus(status: String): void
-    }
+@startuml Cybersecurity SIEM System
 
+package model {
     enum SeverityLevel {
         LOW
         MEDIUM
@@ -21,58 +9,118 @@ package "model" {
     }
 
     class LogEntry {
-        - String logId
         - String sourceIp
         - String message
-        - String logType
+        + LogEntry(String sourceIp, String message)
+        + String getSourceIp()
+        + String getMessage()
+    }
+
+    class Incident {
+        - String id
+        - String title
+        - String sourceIp
+        - SeverityLevel severity
+        - int threatScore
+        - String status
+        - LocalDateTime timestamp
+        + Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore)
+        + Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore, String status, LocalDateTime timestamp)
+        + String getId()
+        + String getTitle()
+        + String getSourceIp()
+        + SeverityLevel getSeverity()
+        + int getThreatScore()
+        + String getStatus()
+        + void setStatus(String status)
+        + LocalDateTime getTimestamp()
     }
 }
 
-package "filter" {
-    abstract class AbstractLogFilter {
-        # AbstractLogFilter nextFilter
-        + setNextFilter(next: AbstractLogFilter): void
-        + {abstract} process(log: LogEntry): Incident
-        # checkNext(log: LogEntry): Incident
+package filter {
+    interface LogFilter {
+        + Incident process(LogEntry log)
     }
 
-    class BruteForceFilter {
-        - Map<String, List<Long>> failureTracker
-        - int THRESHOLD
-        - long TIME_WINDOW_MS
-        + process(log: LogEntry): Incident
+    abstract class AbstractLogFilter implements LogFilter {
+        protected LogFilter nextFilter
+        + void setNext(LogFilter nextFilter)
+        + LogFilter getNext()
+        + {abstract} Incident process(LogEntry log)
     }
 
-    class IpBlacklistFilter {
-        + process(log: LogEntry): Incident
+    class IpBlacklistFilter extends AbstractLogFilter {
+        - Set<String> blacklistedIps
+        + void addToBlacklist(String ip)
+        + Incident process(LogEntry log)
     }
 
-    AbstractLogFilter <|-- BruteForceFilter
-    AbstractLogFilter <|-- IpBlacklistFilter
-    AbstractLogFilter --> AbstractLogFilter : nextFilter
+    class BruteForceFilter extends AbstractLogFilter {
+        - Map<String, List<Long>> failureTimestamps
+        - static final int THRESHOLD = 3
+        - static final long TIME_WINDOW_MS = 60000
+        + Incident process(LogEntry log)
+    }
 }
 
-package "service" {
-    class SIEMEngine {
-        - AbstractLogFilter filterChain
+package observer {
+    interface AlertObserver {
+        + void update(Incident incident)
+    }
+
+    class AlertPublisher {
+        - List<AlertObserver> observers
+        + void attach(AlertObserver observer)
+        + void detach(AlertObserver observer)
+        + void notifyObservers(Incident incident)
+    }
+
+    class AnalystNotifier implements AlertObserver {
+        - String analystName
+        + AnalystNotifier(String analystName)
+        + void update(Incident incident)
+    }
+}
+
+package repository {
+    interface IRepository<T> {
+        + void saveAll(List<T> items)
+        + List<T> loadAll()
+    }
+
+    class FileRepository implements IRepository {
+        - String filePath
+        + void saveAll(List<Incident> incidents)
+        + List<Incident> loadAll()
+    }
+}
+
+package service {
+    class IncidentPriorityQueue {
         - PriorityQueue<Incident> priorityQueue
-        - List<Incident> resolvedIncidents
+        + void addIncident(Incident incident)
+        + Incident pollIncident()
+        + boolean isEmpty()
+        + List<Incident> getAllIncidentsOrdered()
+    }
+
+    class SIEMEngine {
+        - LogFilter filterChain
+        - IRepository<Incident> repository
         - AlertPublisher alertPublisher
-        - FileRepository repository
-        + processLog(log: LogEntry): Incident
-        + resolveIncident(incident: Incident): void
-        + shutdown(): void
+        - IncidentPriorityQueue priorityQueue
+        + SIEMEngine(LogFilter filterChain, IRepository<Incident> repository)
+        + void processLog(LogEntry log)
+        + AlertPublisher getAlertPublisher()
+        + IncidentPriorityQueue getPriorityQueue()
+        + void shutdown()
     }
 }
 
-package "repository" {
-    class FileRepository {
-        + saveAll(incidents: List<Incident>): void
-        + loadAll(): List<Incident>
-    }
-}
+SIEMEngine --> LogFilter
+SIEMEngine --> IRepository
+SIEMEngine --> AlertPublisher
+SIEMEngine --> IncidentPriorityQueue
+AlertPublisher o-- AlertObserver
 
-SIEMEngine --> AbstractLogFilter
-SIEMEngine --> FileRepository
-SIEMEngine --> Incident
 @enduml

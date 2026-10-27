@@ -1,98 +1,54 @@
+import filter.BruteForceFilter;
+import filter.IpBlacklistFilter;
 import model.Incident;
 import model.LogEntry;
 import observer.AnalystNotifier;
 import repository.FileRepository;
+import repository.IRepository;
+import service.IncidentPriorityQueue;
 import service.SIEMEngine;
 
 import java.util.List;
-import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
-        // 1. Veri Depolama ve SIEM Motorunu Başlatma
-        FileRepository repository = new FileRepository();
+        // 1. Veri Depolama ve SIEM Motorunu Başlatma (DIP Uyumlu)
+        IRepository<Incident> repository = new FileRepository();
 
-        // SIEMEngine açılışta kayıtlı verileri otomatik yükler
-        SIEMEngine siemEngine = new SIEMEngine(null, repository);
+        IpBlacklistFilter blacklistFilter = new IpBlacklistFilter();
+        blacklistFilter.addToBlacklist("192.168.1.100");
+
+        BruteForceFilter bruteForceFilter = new BruteForceFilter();
+        blacklistFilter.setNext(bruteForceFilter);
+
+        SIEMEngine siemEngine = new SIEMEngine(blacklistFilter, repository);
 
         // 2. Observer / Bildirim Yayıncısını Bağlama
-        AnalystNotifier SOCNotifier = new AnalystNotifier("SOC Ekibi");
-        siemEngine.getAlertPublisher().subscribe(SOCNotifier);
+        AnalystNotifier SOCNotifier = new AnalystNotifier("SOC Analyst");
+        siemEngine.getAlertPublisher().attach(SOCNotifier);
 
-        Scanner scanner = new Scanner(System.in);
-        boolean running = true;
+        // Örnek Log İşlemleri
+        System.out.println("--- Log İşleme Başlatılıyor ---");
+        siemEngine.processLog(new LogEntry("192.168.1.100", "Karaslistedeki IP Erişimi"));
+        siemEngine.processLog(new LogEntry("10.0.0.5", "Normal Kullanıcı Girişi"));
 
-        System.out.println("=================================================");
-        System.out.println("   SİBER GÜVENLİK OLAY YÖNETİM SİSTEMİ (SIEM)    ");
-        System.out.println("=================================================");
+        // Öncelik Kuyruğundaki Olayları Listeleme (Sıralı Gösterim)
+        IncidentPriorityQueue queue = siemEngine.getPriorityQueue();
+        List<Incident> sortedIncidents = queue.getAllIncidentsOrdered();
 
-        while (running) {
-            System.out.println("\n--- MENÜ ---");
-            System.out.println("1. Yeni Log Girişi Simüle Et (Kural Motorunu Tetikle)");
-            System.out.println("2. Aktif Güvenlik Olaylarını İncele (Öncelikli Heap Sıralaması)");
-            System.out.println("3. En Kritik Olayı Çek ve Müdahale Et (Poll Queue)");
-            System.out.println("4. Olayları Kalıcı Dosyaya Kaydet");
-            System.out.println("0. Çıkış");
-            System.out.print("Seçiminiz: ");
-
-            String choice = scanner.nextLine();
-
-            switch (choice) {
-                case "1":
-                    System.out.print("Kaynak IP Giriniz (örn: 192.168.1.100 veya 10.0.0.5): ");
-                    String ip = scanner.nextLine();
-                    System.out.print("Log Türü Giriniz (AUTH_FAILURE, PORT_SCAN, NORMAL): ");
-                    String type = scanner.nextLine();
-
-                    LogEntry log = new LogEntry("LOG-" + System.currentTimeMillis() % 1000, ip, "Sistem Olayı", type);
-                    Incident detectedIncident = siemEngine.processLog(log);
-
-                    if (detectedIncident != null) {
-                        System.out.println("\n[!] SÜZGEÇ TETİKLENDİ: Yeni güvenlik olayı oluşturuldu ve öncelik kuyruğuna eklendi!");
-                        System.out.println("Tespit Edilen Olay: " + detectedIncident);
-                    } else {
-                        System.out.println("\n[+] Log güvenli. Herhangi bir tehdit süzgecine takılmadı.");
-                    }
-                    break;
-
-                case "2":
-                    System.out.println("\n=== ÖNCELİKLENDİRİLMİŞ GÜVENLİK OLAYLARI (Max-Heap Sıralı) ===");
-                    if (siemEngine.getPriorityQueue().isEmpty()) {
-                        System.out.println("Sistemde aktif güvenlik olayı bulunmuyor.");
-                    } else {
-                        for (Incident inc : siemEngine.getPriorityQueue()) {
-                            System.out.println(inc);
-                        }
-                    }
-                    break;
-
-                case "3":
-                    Incident topIncident = siemEngine.getPriorityQueue().poll();
-                    if (topIncident != null) {
-                        siemEngine.resolveIncident(topIncident);
-                        System.out.println("Olay çözüldü ve arşivlendi: " + topIncident);
-                    } else {
-                        System.out.println("Çözülecek aktif olay yok.");
-                    }
-                    break;
-
-                case "4":
-                    siemEngine.shutdown();
-                    System.out.println("\n[KAYIT] Tüm olaylar (aktif ve çözülenler) 'incidents.txt' dosyasına başarıyla kaydedildi.");
-                    break;
-
-                case "0":
-                    running = false;
-                    break;
-
-                default:
-                    System.out.println("Geçersiz seçim, tekrar deneyiniz.");
-            }
+        System.out.println("\n--- Öncelikli Olay Listesi ---");
+        for (Incident inc : sortedIncidents) {
+            System.out.println(inc.getId() + " - " + inc.getTitle() + " - Skor: " + inc.getThreatScore());
         }
 
-        // Çıkışta otomatik kaydetme ve temiz kapatma
+        // En Yüksek Öncelikli Olayı Çekme
+        if (!queue.isEmpty()) {
+            Incident topIncident = queue.pollIncident();
+            System.out.println("\nİşlenen En Yüksek Öncelikli Olay: " + topIncident.getId());
+        }
+
+        // Sistemi Kapatma ve Verileri Kaydetme
         siemEngine.shutdown();
-        System.out.println("Tüm veriler (aktif ve çözülenler) kaydedildi. Sistem kapatılıyor.");
-        scanner.close();
+        System.out.println("\nSIEM Motoru kapatıldı, veriler kaydedildi.");
     }
 }

@@ -2,30 +2,32 @@ package model;
 
 import java.time.LocalDateTime;
 
-public class Incident implements Comparable<Incident> {
+public class Incident {
     private String id;
     private String title;
     private String sourceIp;
     private SeverityLevel severity;
     private int threatScore;
-    private LocalDateTime timestamp;
     private String status;
+    private LocalDateTime timestamp;
 
-    public Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore) {
+    // 1. Ana Constructor (7 Parametreli - Kalıcılık ve Zaman Damgası Koruma İçin)
+    public Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore, String status, LocalDateTime timestamp) {
         this.id = id;
         this.title = title;
         this.sourceIp = sourceIp;
         this.severity = severity;
         this.threatScore = threatScore;
-        this.timestamp = LocalDateTime.now();
-        this.status = "OPEN";
+        this.status = status;
+        this.timestamp = (timestamp != null) ? timestamp : LocalDateTime.now();
     }
 
-    @Override
-    public int compareTo(Incident other) {
-        return Integer.compare(other.threatScore, this.threatScore);
+    // 2. Kolaylık Constructor'ı (5 Parametreli - Yeni Olay Oluşturma İçin)
+    public Incident(String id, String title, String sourceIp, SeverityLevel severity, int threatScore) {
+        this(id, title, sourceIp, severity, threatScore, "OPEN", LocalDateTime.now());
     }
 
+    // Getter ve Setter Metotları
     public String getId() { return id; }
     public String getTitle() { return title; }
     public String getSourceIp() { return sourceIp; }
@@ -34,10 +36,10 @@ public class Incident implements Comparable<Incident> {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public LocalDateTime getTimestamp() { return timestamp; }
+    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
 
     @Override
     public String toString() {
-        return String.format("[%s] ID: %s | %s | Tehdit Skoru: %d | Durum: %s | IP: %s",
-                severity, id, title, threatScore, status, sourceIp);
+        return id + "," + title + "," + sourceIp + "," + severity + "," + threatScore + "," + status + "," + timestamp;
     }
 }

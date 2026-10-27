@@ -9,12 +9,18 @@ public class LogEntry {
     private String logType;
     private LocalDateTime timestamp;
 
+    // Ana Constructor (4 Parametreli)
     public LogEntry(String id, String sourceIp, String message, String logType) {
         this.id = id;
         this.sourceIp = sourceIp;
         this.message = message;
         this.logType = logType;
         this.timestamp = LocalDateTime.now();
+    }
+
+    // Aşırı Yüklenmiş Constructor (2 Parametreli - Testler ve Filtreler İçin)
+    public LogEntry(String sourceIp, String message) {
+        this("LOG-" + System.currentTimeMillis(), sourceIp, message, "GENERAL");
     }
 
     public String getId() { return id; }

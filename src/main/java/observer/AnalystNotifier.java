@@ -3,14 +3,26 @@ package observer;
 import model.Incident;
 
 public class AnalystNotifier implements AlertObserver {
-    private String channelName;
+    private final String analystName;
+    private Incident lastNotifiedIncident;
+    private int notificationCount = 0;
 
-    public AnalystNotifier(String channelName) {
-        this.channelName = channelName;
+    public AnalystNotifier(String analystName) {
+        this.analystName = analystName;
     }
 
     @Override
-    public void onCriticalIncident(Incident incident) {
-        System.out.println("🚨 [" + channelName + " UYARISI] KRİTİK GÜVENLİK OLAYI! -> " + incident.getTitle() + " (IP: " + incident.getSourceIp() + ")");
+    public void update(Incident incident) {
+        this.lastNotifiedIncident = incident;
+        this.notificationCount++;
+        System.out.println(analystName + " notified of incident: " + incident.getId());
+    }
+
+    public Incident getLastNotifiedIncident() {
+        return lastNotifiedIncident;
+    }
+
+    public int getNotificationCount() {
+        return notificationCount;
     }
 }

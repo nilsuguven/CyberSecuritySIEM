@@ -10,34 +10,42 @@ import java.util.List;
 import java.util.Map;
 
 public class BruteForceFilter extends AbstractLogFilter {
-    private final Map<String, List<Long>> failureTracker = new HashMap<>();
+    // IP başına başarısız denemelerin milisaniye cinsinden zaman damgaları
+    private final Map<String, List<Long>> failureTimestamps = new HashMap<>();
     private static final int THRESHOLD = 3;
-    private static final long TIME_WINDOW_MS = 60000;
+    private static final long TIME_WINDOW_MS = 60 * 1000; // 60 saniye (1 dakika)
 
     @Override
     public Incident process(LogEntry log) {
-        if ("AUTH_FAILURE".equalsIgnoreCase(log.getLogType())) {
+        if (log != null && log.getMessage() != null && log.getMessage().toUpperCase().contains("AUTH_FAILURE")) {
             String ip = log.getSourceIp();
             long currentTime = System.currentTimeMillis();
 
-            failureTracker.putIfAbsent(ip, new ArrayList<>());
-            List<Long> timestamps = failureTracker.get(ip);
+            // IP için liste yoksa oluştur
+            failureTimestamps.putIfAbsent(ip, new ArrayList<>());
+            List<Long> timestamps = failureTimestamps.get(ip);
 
-            timestamps.removeIf(time -> (currentTime - time) > TIME_WINDOW_MS);
+            // 1. Zaman penceresi dışındaki (60 saniyeden eski) denemeleri temizle
+            timestamps.removeIf(timestamp -> (currentTime - timestamp) > TIME_WINDOW_MS);
+
+            // 2. Yeni başarısız denemenin zamanını ekle
             timestamps.add(currentTime);
 
-            if (timestamps.size() >= THRESHOLD) {
-                timestamps.clear();
+            // 3. Yalnızca eşik değere (tam 3 denemeye) ULAŞILDIĞI AN olay tetikle
+            if (timestamps.size() == THRESHOLD) {
                 return new Incident(
-                        "INC-BF-" + (currentTime % 10000),
-                        "Brute Force Saldırısı Tespit Edildi! (" + THRESHOLD + " başarısız deneme)",
+                        "INC-" + currentTime,
+                        "Brute Force Attack Detected",
                         ip,
                         SeverityLevel.CRITICAL,
-                        90 // Threat Score (Kritik olay puanı)
+                        90
                 );
             }
         }
 
-        return checkNext(log);
+        if (nextFilter != null) {
+            return nextFilter.process(log);
+        }
+        return null;
     }
 }

@@ -1,35 +1,32 @@
 package repository;
-
 import model.Incident;
 import model.SeverityLevel;
-
 import java.io.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FileRepository {
+public class FileRepository implements IRepository<Incident> {
     private final String filePath = "incidents.txt";
 
+    @Override
     public void saveAll(List<Incident> incidents) {
         try (PrintWriter writer = new PrintWriter(new FileWriter(filePath))) {
             for (Incident inc : incidents) {
-                // Format: ID|Title|SourceIp|Severity|ThreatScore|Status|Timestamp
-                writer.println(String.format("%s|%s|%s|%s|%d|%s|%s",
-                        inc.getId(),
-                        inc.getTitle(),
-                        inc.getSourceIp(),
-                        inc.getSeverity().name(),
-                        inc.getThreatScore(),
-                        inc.getStatus(),
-                        inc.getTimestamp() != null ? inc.getTimestamp().toString() : LocalDateTime.now().toString()
-                ));
+                writer.println(inc.getId() + "|" +
+                        inc.getTitle() + "|" +
+                        inc.getSourceIp() + "|" +
+                        inc.getSeverity() + "|" +
+                        inc.getThreatScore() + "|" +
+                        inc.getStatus() + "|" +
+                        inc.getTimestamp());
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    @Override
     public List<Incident> loadAll() {
         List<Incident> list = new ArrayList<>();
         File file = new File(filePath);
@@ -40,15 +37,16 @@ public class FileRepository {
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split("\\|");
                 if (parts.length >= 7) {
-                    Incident inc = new Incident(
-                            parts[0], // id
-                            parts[1], // title
-                            parts[2], // sourceIp
-                            SeverityLevel.valueOf(parts[3]), // severity
-                            Integer.parseInt(parts[4]) // threatScore
-                    );
-                    inc.setStatus(parts[5]); // Status (OPEN / RESOLVED)
-                    list.add(inc);
+                    String id = parts[0];
+                    String title = parts[1];
+                    String ip = parts[2];
+                    SeverityLevel severity = SeverityLevel.valueOf(parts[3]);
+                    int score = Integer.parseInt(parts[4]);
+                    String status = parts[5];
+                    LocalDateTime timestamp = LocalDateTime.parse(parts[6]);
+
+                    Incident incident = new Incident(id, title, ip, severity, score, status, timestamp);
+                    list.add(incident);
                 }
             }
         } catch (Exception e) {

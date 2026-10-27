@@ -3,24 +3,29 @@ package filter;
 import model.Incident;
 import model.LogEntry;
 import model.SeverityLevel;
-import java.util.Arrays;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class IpBlacklistFilter extends AbstractLogFilter {
-    // Örnek karalistedeki zararlı IP'ler
-    private final List<String> blacklistedIps = Arrays.asList("192.168.1.100", "10.0.0.66", "45.33.22.11");
+    private final Set<String> blacklistedIps = new HashSet<>();
+    private LogFilter nextFilter;
+
+    public void addToBlacklist(String ip) {
+        blacklistedIps.add(ip);
+    }
+
+    public void setNext(LogFilter nextFilter) {
+        this.nextFilter = nextFilter;
+    }
 
     @Override
     public Incident process(LogEntry log) {
-        if (blacklistedIps.contains(log.getSourceIp())) {
-            return new Incident(
-                    "INC-" + System.currentTimeMillis() % 10000,
-                    "Karalistedeki IP Bağlantı Tespit Edildi (" + log.getLogType() + ")",
-                    log.getSourceIp(),
-                    SeverityLevel.HIGH,
-                    85 // Yüksek tehdit skoru
-            );
+        if (log != null && blacklistedIps.contains(log.getSourceIp())) {
+            return new Incident("INC-" + System.currentTimeMillis(), "Blacklisted IP Access Attempt", log.getSourceIp(), SeverityLevel.CRITICAL, 95);
         }
-        return checkNext(log);
+        if (nextFilter != null) {
+            return nextFilter.process(log);
+        }
+        return null;
     }
 }

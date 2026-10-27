@@ -2,38 +2,34 @@ package service;
 
 import model.Incident;
 import java.util.PriorityQueue;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.ArrayList;
 
 public class IncidentPriorityQueue {
-    // Java'nın PriorityQueue yapısı varsayılan olarak min-heap çalışır,
-    // ancak Incident sınıfında compareTo metodunu tersten yazdığımız için
-    // burada en yüksek threatScore'a sahip olay en üstte (Max-Heap) durur.
-    private final PriorityQueue<Incident> queue = new PriorityQueue<>();
+    private final PriorityQueue<Incident> queue;
+
+    public IncidentPriorityQueue() {
+        this.queue = new PriorityQueue<>((a, b) -> Integer.compare(b.getThreatScore(), a.getThreatScore()));
+    }
 
     public void addIncident(Incident incident) {
-        queue.add(incident);
+        if (incident != null) {
+            queue.add(incident);
+        }
     }
 
-    public Incident pollNextIncident() {
-        return queue.poll(); // En yüksek tehdit puanlı olayı çeker ve kuyruktan çıkarır
-    }
-
-    public Incident peekNextIncident() {
-        return queue.peek(); // En yüksek tehdit puanlı olayı silmeden görüntüler
-    }
-
-    public List<Incident> getAllIncidentsOrdered() {
-        List<Incident> sortedList = new ArrayList<>(queue);
-        sortedList.sort(null); // Tehdit skoru en yüksekten en düşüğe sıralar
-        return sortedList;
+    public Incident pollIncident() {
+        return queue.poll();
     }
 
     public boolean isEmpty() {
         return queue.isEmpty();
     }
 
-    public int size() {
-        return queue.size();
+    public List<Incident> getAllIncidentsOrdered() {
+        List<Incident> list = new ArrayList<>(queue);
+        list.sort((a, b) -> Integer.compare(b.getThreatScore(), a.getThreatScore()));
+        return list;
     }
 }

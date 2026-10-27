@@ -40,6 +40,6 @@ Filtrelerin sırası ve birden fazla kuralın eşleşmesi durumunda uygulanacak 
 
 ---
 
-## 📐 UML Sınıf Diyagramı
-
-Projenin sınıflarını ve aralarındaki ilişkileri gösteren PlantUML kaynak dosyası `UML_Diagram.puml` içerisinde bulunmaktadır. Diyagram, sistemin mimarisini ve bileşenler arasındaki temel ilişkileri açıklamak amacıyla hazırlanmıştır.
+## UML Diyagramı
+- **Kaynak Dosya:** `src/UML_Diagram.puml`
+- **Görsel:** `UML_Diagram.png` (Kök Dizin)
