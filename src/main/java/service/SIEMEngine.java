@@ -35,7 +35,10 @@ public class SIEMEngine {
 
         for (Incident incident : savedIncidents) {
             allIncidents.add(incident);
-            priorityQueue.addIncident(incident);
+
+            if (!"RESOLVED".equalsIgnoreCase(incident.getStatus())) {
+                priorityQueue.addIncident(incident);
+            }
         }
     }
     public void processLog(LogEntry log) {
